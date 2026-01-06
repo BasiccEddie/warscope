@@ -6,8 +6,7 @@ const {
     REST,
     Routes,
     SlashCommandBuilder,
-    EmbedBuilder,
-    PermissionFlagsBits
+    EmbedBuilder
 } = require('discord.js');
 
 /* ======================
@@ -48,12 +47,12 @@ const commands = [
         .setDescription('Report a user to staff')
         .addUserOption(option =>
             option.setName('user')
-                .setDescription('User you want to report')
+                .setDescription('User to report')
                 .setRequired(true)
         )
         .addStringOption(option =>
             option.setName('message')
-                .setDescription('Reason for reporting')
+                .setDescription('Reason for report')
                 .setRequired(true)
         ),
 
@@ -83,7 +82,7 @@ const commands = [
         .setDescription('Delete messages in this channel')
         .addIntegerOption(option =>
             option.setName('amount')
-                .setDescription('Number of messages to delete')
+                .setDescription('Number of messages to delete (1-100)')
                 .setRequired(true)
         ),
 
@@ -97,7 +96,7 @@ const commands = [
                 .setRequired(true)
         ),
 
-    // Message Context Menu: Report Message
+    // Message context menu: Report message
     {
         name: 'Report message',
         type: 3 // MESSAGE context menu
@@ -141,6 +140,15 @@ client.once('ready', () => {
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand() && !interaction.isMessageContextMenuCommand()) return;
 
+    const STAFF_ROLE_ID = '1457256394653696040';
+    const STAFF_CHANNEL_ID = '1456978097277763737';
+    const MUTED_ROLE_ID = '1456943872080085004';
+    const FACTCHECK_CHANNEL_ID = '1456979623081410702';
+    const FACTCHECK_ROLE_ID = '1456943412837089402';
+
+    const adminRoles = ['Owner','Admin','Moderator'];
+    const bnRoles = ['Owner','Admin','Warscope Journalist'];
+
     /* ===== /ping ===== */
     if (interaction.isChatInputCommand() && interaction.commandName === 'ping') {
         return interaction.reply('🏓 Pong!');
@@ -148,12 +156,10 @@ client.on('interactionCreate', async interaction => {
 
     /* ===== /bn ===== */
     if (interaction.isChatInputCommand() && interaction.commandName === 'bn') {
-        const allowedRoles = ['Owner','Admin','Warscope Journalist'];
-        const hasPermission = interaction.member.roles.cache.some(r => allowedRoles.includes(r.name));
-        if (!hasPermission) return interaction.reply({ content: '❌ You are not allowed to use this command.', ephemeral: true });
-
+        if (!interaction.member.roles.cache.some(r => bnRoles.includes(r.name))) {
+            return interaction.reply({ content: '❌ You are not allowed to use this command.', ephemeral: true });
+        }
         const message = interaction.options.getString('message');
-        const BREAKING_NEWS_ROLE_ID = '1456944933335334997';
         const embed = new EmbedBuilder()
             .setTitle('🚨 BREAKING NEWS 🚨')
             .setDescription(message)
@@ -161,9 +167,9 @@ client.on('interactionCreate', async interaction => {
             .setTimestamp();
 
         await interaction.channel.send({
-            content: `<@&${BREAKING_NEWS_ROLE_ID}>`,
+            content: `<@&1456944933335334997>`,
             embeds: [embed],
-            allowedMentions: { roles: [BREAKING_NEWS_ROLE_ID] }
+            allowedMentions: { roles: ['1456944933335334997'] }
         });
 
         return interaction.reply({ content: '✅ Breaking news sent.', ephemeral: true });
@@ -171,10 +177,8 @@ client.on('interactionCreate', async interaction => {
 
     /* ===== /report ===== */
     if (interaction.isChatInputCommand() && interaction.commandName === 'report') {
-        const STAFF_CHANNEL_ID = '1456978097277763737';
         const reportedUser = interaction.options.getUser('user');
         const message = interaction.options.getString('message');
-
         const staffChannel = await interaction.guild.channels.fetch(STAFF_CHANNEL_ID).catch(() => null);
         if (!staffChannel) return interaction.reply({ content: '❌ Staff channel not found.', ephemeral: true });
 
@@ -189,9 +193,9 @@ client.on('interactionCreate', async interaction => {
             .setTimestamp();
 
         await staffChannel.send({
-            content: `<@&1457256394653696040>`, // Staff ping
+            content: `<@&${STAFF_ROLE_ID}>`,
             embeds: [embed],
-            allowedMentions: { roles: ['1457256394653696040'] }
+            allowedMentions: { roles: [STAFF_ROLE_ID] }
         });
 
         return interaction.reply({ content: '✅ Report sent to staff.', ephemeral: true });
@@ -199,9 +203,7 @@ client.on('interactionCreate', async interaction => {
 
     /* ===== Right click -> Report message ===== */
     if (interaction.isMessageContextMenuCommand() && interaction.commandName === 'Report message') {
-        const STAFF_CHANNEL_ID = '1456978097277763737';
         const reportedMessage = interaction.targetMessage;
-
         const staffChannel = await interaction.guild.channels.fetch(STAFF_CHANNEL_ID).catch(() => null);
         if (!staffChannel) return interaction.reply({ content: '❌ Staff channel not found.', ephemeral: true });
 
@@ -218,9 +220,9 @@ client.on('interactionCreate', async interaction => {
             .setFooter({ text: `Message ID: ${reportedMessage.id}` });
 
         await staffChannel.send({
-            content: `<@&1457256394653696040>`, // Staff ping
+            content: `<@&${STAFF_ROLE_ID}>`,
             embeds: [embed],
-            allowedMentions: { roles: ['1457256394653696040'] }
+            allowedMentions: { roles: [STAFF_ROLE_ID] }
         });
 
         return interaction.reply({ content: '✅ Report sent to staff.', ephemeral: true });
@@ -228,55 +230,42 @@ client.on('interactionCreate', async interaction => {
 
     /* ===== /mute ===== */
     if (interaction.isChatInputCommand() && interaction.commandName === 'mute') {
-        const allowedRoles = ['Owner','Admin','Moderator'];
-        const hasPermission = interaction.member.roles.cache.some(r => allowedRoles.includes(r.name));
-        if (!hasPermission) return interaction.reply({ content: '❌ You cannot use this command.', ephemeral: true });
-
+        if (!interaction.member.roles.cache.some(r => adminRoles.includes(r.name))) {
+            return interaction.reply({ content: '❌ You cannot use this command.', ephemeral: true });
+        }
         const user = interaction.options.getUser('user');
         const member = await interaction.guild.members.fetch(user.id).catch(() => null);
         if (!member) return interaction.reply({ content: '❌ User not found.', ephemeral: true });
-
-        const MUTED_ROLE_ID = '1456943872080085004';
         await member.roles.add(MUTED_ROLE_ID).catch(() => null);
-
         return interaction.reply({ content: `✅ ${user.tag} has been muted.`, ephemeral: true });
     }
 
     /* ===== /unmute ===== */
     if (interaction.isChatInputCommand() && interaction.commandName === 'unmute') {
-        const allowedRoles = ['Owner','Admin','Moderator'];
-        const hasPermission = interaction.member.roles.cache.some(r => allowedRoles.includes(r.name));
-        if (!hasPermission) return interaction.reply({ content: '❌ You cannot use this command.', ephemeral: true });
-
+        if (!interaction.member.roles.cache.some(r => adminRoles.includes(r.name))) {
+            return interaction.reply({ content: '❌ You cannot use this command.', ephemeral: true });
+        }
         const user = interaction.options.getUser('user');
         const member = await interaction.guild.members.fetch(user.id).catch(() => null);
         if (!member) return interaction.reply({ content: '❌ User not found.', ephemeral: true });
-
-        const MUTED_ROLE_ID = '1456943872080085004';
         await member.roles.remove(MUTED_ROLE_ID).catch(() => null);
-
         return interaction.reply({ content: `✅ ${user.tag} has been unmuted.`, ephemeral: true });
     }
 
     /* ===== /purge ===== */
     if (interaction.isChatInputCommand() && interaction.commandName === 'purge') {
-        const allowedRoles = ['Owner','Admin','Moderator'];
-        const hasPermission = interaction.member.roles.cache.some(r => allowedRoles.includes(r.name));
-        if (!hasPermission) return interaction.reply({ content: '❌ You cannot use this command.', ephemeral: true });
-
+        if (!interaction.member.roles.cache.some(r => adminRoles.includes(r.name))) {
+            return interaction.reply({ content: '❌ You cannot use this command.', ephemeral: true });
+        }
         const amount = interaction.options.getInteger('amount');
-        if (amount < 1 || amount > 100) return interaction.reply({ content: '❌ You can only delete 1-100 messages at a time.', ephemeral: true });
-
+        if (amount < 1 || amount > 100) return interaction.reply({ content: '❌ Can delete 1-100 messages only.', ephemeral: true });
         await interaction.channel.bulkDelete(amount, true).catch(() => null);
         return interaction.reply({ content: `✅ Deleted ${amount} messages.`, ephemeral: true });
     }
 
     /* ===== /factcheck ===== */
     if (interaction.isChatInputCommand() && interaction.commandName === 'factcheck') {
-        const FACTCHECK_CHANNEL_ID = '1456979623081410702';
-        const FACTCHECK_ROLE_ID = '1456943412837089402';
         const message = interaction.options.getString('message');
-
         const factChannel = await interaction.guild.channels.fetch(FACTCHECK_CHANNEL_ID).catch(() => null);
         if (!factChannel) return interaction.reply({ content: '❌ Factcheck channel not found.', ephemeral: true });
 
