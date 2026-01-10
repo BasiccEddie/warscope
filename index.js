@@ -1,237 +1,225 @@
-// =======================
-// 1️⃣ IMPORTS
-// =======================
 require('dotenv').config();
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const axios = require('axios');
 
-// =======================
-// 2️⃣ CLIENT
-// =======================
+// ------------------
+// CLIENT
+// ------------------
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
-// =======================
-// 3️⃣ COOLDOWN
-// =======================
-const cooldowns = new Map(); // Map<userId, timestamp>
-
-// =======================
-// 4️⃣ COMMAND DEFINITIONS
-// =======================
+// ------------------
+// COMMANDS
+// ------------------
 const commands = [
-  new SlashCommandBuilder().setName('ping').setDescription('Test if the bot is online'),
-  new SlashCommandBuilder()
-    .setName('bn')
-    .setDescription('Send a breaking news announcement')
-    .addStringOption(option =>
-      option.setName('message').setDescription('Breaking news content').setRequired(true)
-    ),
-  new SlashCommandBuilder()
-    .setName('report')
-    .setDescription('Report a user with message')
-    .addUserOption(option => option.setName('user').setDescription('User to report').setRequired(true))
-    .addStringOption(option => option.setName('message').setDescription('Reason or message').setRequired(true)),
-  new SlashCommandBuilder()
-    .setName('mute')
-    .setDescription('Mute a user')
-    .addUserOption(option => option.setName('user').setDescription('User to mute').setRequired(true)),
-  new SlashCommandBuilder()
-    .setName('unmute')
-    .setDescription('Unmute a user')
-    .addUserOption(option => option.setName('user').setDescription('User to unmute').setRequired(true)),
-  new SlashCommandBuilder()
-    .setName('purge')
-    .setDescription('Delete messages in the channel')
-    .addIntegerOption(option => option.setName('amount').setDescription('Number of messages to delete').setRequired(true)),
-  new SlashCommandBuilder()
-    .setName('factcheck')
-    .setDescription('Send verification request to Fact Checkers')
-].map(cmd => cmd.toJSON());
+    new SlashCommandBuilder()
+        .setName('ping')
+        .setDescription('Test if the bot is online'),
 
-// =======================
-// 5️⃣ REGISTER COMMANDS
-// =======================
+    new SlashCommandBuilder()
+        .setName('bn')
+        .setDescription('Send a breaking news announcement')
+        .addStringOption(option =>
+            option.setName('message').setDescription('Breaking news content').setRequired(true)
+        ),
+
+    new SlashCommandBuilder()
+        .setName('report')
+        .setDescription('Report a user with a message')
+        .addUserOption(opt => opt.setName('user').setDescription('User to report').setRequired(true))
+        .addStringOption(opt => opt.setName('message').setDescription('Reason or message').setRequired(true)),
+
+    new SlashCommandBuilder()
+        .setName('mute')
+        .setDescription('Mute a user')
+        .addUserOption(opt => opt.setName('user').setDescription('User to mute').setRequired(true)),
+
+    new SlashCommandBuilder()
+        .setName('unmute')
+        .setDescription('Unmute a user')
+        .addUserOption(opt => opt.setName('user').setDescription('User to unmute').setRequired(true)),
+
+    new SlashCommandBuilder()
+        .setName('purge')
+        .setDescription('Delete a number of messages')
+        .addIntegerOption(opt => opt.setName('number').setDescription('Number of messages to delete').setRequired(true)),
+
+    new SlashCommandBuilder()
+        .setName('factcheck')
+        .setDescription('Request fact-check verification')
+].map(cmd => cmd.toJSON ? cmd.toJSON() : cmd);
+
+// ------------------
+// REGISTER COMMANDS
+// ------------------
 const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
 (async () => {
-  try {
-    console.log('🔁 Registering commands...');
-    await rest.put(
-      Routes.applicationGuildCommands(process.env.CLIENT_ID, '1456940227334635674'), // YOUR SERVER ID
-      { body: commands }
-    );
-    console.log('✅ Commands registered');
-  } catch (err) {
-    console.error(err);
-  }
+    try {
+        console.log('🔁 Registering commands...');
+        await rest.put(
+            Routes.applicationGuildCommands(process.env.CLIENT_ID, '1456940227334635674'),
+            { body: commands }
+        );
+        console.log('✅ Commands registered');
+    } catch (err) {
+        console.error(err);
+    }
 })();
 
-// =======================
-// 6️⃣ READY EVENT
-// =======================
+// ------------------
+// READY
+// ------------------
 client.once('ready', () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
+    console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// =======================
-// 7️⃣ SLASH COMMAND HANDLER
-// =======================
+// ------------------
+// AI Ping Cooldown
+// ------------------
+const cooldowns = new Map();
+const COOLDOWN_SECONDS = 20;
+
+// ------------------
+// INTERACTIONS
+// ------------------
 client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
+    if (!interaction.isChatInputCommand()) return;
 
-  const modRoles = ['Owner', 'Admin', 'Moderator', 'Warscope Journalist'];
+    const allowedRoles = ['Owner', 'Admin', 'Moderator', 'Warscope Journalist'];
 
-  // ===== /ping =====
-  if (interaction.commandName === 'ping') return interaction.reply('🏓 Pong!');
+    // /ping
+    if (interaction.commandName === 'ping') {
+        return interaction.reply('🏓 Pong!');
+    }
 
-  // ===== /bn =====
-  if (interaction.commandName === 'bn') {
-    const hasPermission = interaction.member.roles.cache.some(r => modRoles.includes(r.name));
-    if (!hasPermission) return interaction.reply({ content: '❌ Not allowed', ephemeral: true });
+    // /bn
+    if (interaction.commandName === 'bn') {
+        if (!interaction.member.roles.cache.some(r => allowedRoles.includes(r.name))) {
+            return interaction.reply({ content: '❌ Not allowed.', ephemeral: true });
+        }
+        const message = interaction.options.getString('message');
+        const BREAKING_NEWS_ROLE_ID = '1456944933335334997';
+        const embed = new EmbedBuilder()
+            .setTitle('🚨 BREAKING NEWS 🚨')
+            .setDescription(message)
+            .setColor(0xff0000)
+            .setTimestamp();
+        await interaction.channel.send({
+            content: `<@&${BREAKING_NEWS_ROLE_ID}>`,
+            embeds: [embed],
+            allowedMentions: { roles: [BREAKING_NEWS_ROLE_ID] }
+        });
+        return interaction.reply({ content: '✅ Breaking news sent.', ephemeral: true });
+    }
 
-    const message = interaction.options.getString('message');
-    const BREAKING_NEWS_ROLE_ID = '1456944933335334997';
-    const embed = new EmbedBuilder().setTitle('🚨 BREAKING NEWS 🚨').setDescription(message).setColor(0xff0000).setTimestamp();
+    // /report
+    if (interaction.commandName === 'report') {
+        const user = interaction.options.getUser('user');
+        const messageText = interaction.options.getString('message');
+        const STAFF_CHANNEL_ID = '1456978097277763737';
+        const staffChannel = await interaction.guild.channels.fetch(STAFF_CHANNEL_ID).catch(() => null);
+        if (!staffChannel) return interaction.reply({ content: '❌ Staff channel not found.', ephemeral: true });
 
-    await interaction.channel.send({
-      content: `<@&${BREAKING_NEWS_ROLE_ID}>`,
-      embeds: [embed],
-      allowedMentions: { roles: [BREAKING_NEWS_ROLE_ID] }
-    });
-    return interaction.reply({ content: '✅ Breaking news sent.', ephemeral: true });
-  }
+        const embed = new EmbedBuilder()
+            .setTitle('🚩 User Report')
+            .addFields(
+                { name: 'Reported User', value: `${user.tag} (${user.id})` },
+                { name: 'Reporter', value: `${interaction.user.tag} (${interaction.user.id})` },
+                { name: 'Message', value: messageText }
+            )
+            .setColor(0xff5555)
+            .setTimestamp();
 
-  // ===== /report =====
-  if (interaction.commandName === 'report') {
-    const STAFF_CHANNEL_ID = '1456978097277763737';
-    const staffChannel = await interaction.guild.channels.fetch(STAFF_CHANNEL_ID).catch(() => null);
-    if (!staffChannel) return interaction.reply({ content: '❌ Staff channel not found.', ephemeral: true });
+        await staffChannel.send({ content: `<@&1457256394653696040>`, embeds: [embed] }); // pings Staff
+        return interaction.reply({ content: '✅ Report sent.', ephemeral: true });
+    }
 
-    const reportedUser = interaction.options.getUser('user');
-    const messageText = interaction.options.getString('message');
+    // /mute
+    if (interaction.commandName === 'mute') {
+        if (!interaction.member.roles.cache.some(r => allowedRoles.includes(r.name))) {
+            return interaction.reply({ content: '❌ Not allowed.', ephemeral: true });
+        }
+        const user = interaction.options.getUser('user');
+        const mutedRole = interaction.guild.roles.cache.get('1456943872080085004');
+        const member = await interaction.guild.members.fetch(user.id);
+        if (!member.roles.cache.has(mutedRole.id)) await member.roles.add(mutedRole);
+        return interaction.reply({ content: `✅ ${user.tag} muted.`, ephemeral: true });
+    }
 
-    const embed = new EmbedBuilder()
-      .setTitle('🚩 User Report')
-      .addFields(
-        { name: 'Reported User', value: `${reportedUser.tag} (${reportedUser.id})` },
-        { name: 'Reporter', value: `${interaction.user.tag} (${interaction.user.id})` },
-        { name: 'Message', value: messageText }
-      )
-      .setColor(0xff5555)
-      .setTimestamp();
+    // /unmute
+    if (interaction.commandName === 'unmute') {
+        if (!interaction.member.roles.cache.some(r => allowedRoles.includes(r.name))) {
+            return interaction.reply({ content: '❌ Not allowed.', ephemeral: true });
+        }
+        const user = interaction.options.getUser('user');
+        const mutedRole = interaction.guild.roles.cache.get('1456943872080085004');
+        const member = await interaction.guild.members.fetch(user.id);
+        if (member.roles.cache.has(mutedRole.id)) await member.roles.remove(mutedRole);
+        return interaction.reply({ content: `✅ ${user.tag} unmuted.`, ephemeral: true });
+    }
 
-    await staffChannel.send({
-      content: `<@&1457256394653696040>`,
-      embeds: [embed],
-      allowedMentions: { roles: ['1457256394653696040'] }
-    });
+    // /purge
+    if (interaction.commandName === 'purge') {
+        if (!interaction.member.roles.cache.some(r => allowedRoles.includes(r.name))) {
+            return interaction.reply({ content: '❌ Not allowed.', ephemeral: true });
+        }
+        const number = interaction.options.getInteger('number');
+        const messages = await interaction.channel.messages.fetch({ limit: number });
+        await interaction.channel.bulkDelete(messages);
+        return interaction.reply({ content: `✅ Deleted ${number} messages.`, ephemeral: true });
+    }
 
-    return interaction.reply({ content: '✅ Report sent to staff.', ephemeral: true });
-  }
-
-  // ===== /mute =====
-  if (interaction.commandName === 'mute') {
-    const hasPermission = interaction.member.roles.cache.some(r => modRoles.includes(r.name));
-    if (!hasPermission) return interaction.reply({ content: '❌ Not allowed', ephemeral: true });
-
-    const user = interaction.options.getUser('user');
-    const member = await interaction.guild.members.fetch(user.id);
-    const MUTED_ROLE_ID = '1456943872080085004';
-    await member.roles.add(MUTED_ROLE_ID);
-    return interaction.reply({ content: `✅ ${user.tag} has been muted.`, ephemeral: true });
-  }
-
-  // ===== /unmute =====
-  if (interaction.commandName === 'unmute') {
-    const hasPermission = interaction.member.roles.cache.some(r => modRoles.includes(r.name));
-    if (!hasPermission) return interaction.reply({ content: '❌ Not allowed', ephemeral: true });
-
-    const user = interaction.options.getUser('user');
-    const member = await interaction.guild.members.fetch(user.id);
-    const MUTED_ROLE_ID = '1456943872080085004';
-    await member.roles.remove(MUTED_ROLE_ID);
-    return interaction.reply({ content: `✅ ${user.tag} has been unmuted.`, ephemeral: true });
-  }
-
-  // ===== /purge =====
-  if (interaction.commandName === 'purge') {
-    const hasPermission = interaction.member.roles.cache.some(r => modRoles.includes(r.name));
-    if (!hasPermission) return interaction.reply({ content: '❌ Not allowed', ephemeral: true });
-
-    const amount = interaction.options.getInteger('amount');
-    await interaction.channel.bulkDelete(amount, true);
-    return interaction.reply({ content: `✅ Deleted ${amount} messages.`, ephemeral: true });
-  }
-
-  // ===== /factcheck =====
-  if (interaction.commandName === 'factcheck') {
-    const FACT_CHANNEL_ID = '1456979623081410702';
-    const FACT_ROLE_ID = '1456943412837089402';
-    const channel = await interaction.guild.channels.fetch(FACT_CHANNEL_ID);
-    if (!channel) return interaction.reply({ content: '❌ Fact check channel not found.', ephemeral: true });
-
-    await channel.send(`<@&${FACT_ROLE_ID}> Verification requested by ${interaction.user.tag}`);
-    return interaction.reply({ content: '✅ Fact check request sent.', ephemeral: true });
-  }
+    // /factcheck
+    if (interaction.commandName === 'factcheck') {
+        const channel = await client.channels.fetch('1456979623081410702');
+        await channel.send({ content: `<@&1456943412837089402> Verification request!` });
+        return interaction.reply({ content: '✅ Fact check requested.', ephemeral: true });
+    }
 });
 
-// =======================
-// 8️⃣ MESSAGE PING AI (Hugging Face BLOOM-560M)
-// =======================
-client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
-  if (!message.mentions.has(client.user)) return;
+// ------------------
+// AI Ping Handler
+// ------------------
+client.on('messageCreate', async message => {
+    if (message.author.bot) return;
+    if (!message.mentions.has(client.user)) return;
 
-  const now = Date.now();
-  const userId = message.author.id;
+    const userId = message.author.id;
+    const now = Date.now();
+    if (cooldowns.has(userId) && now - cooldowns.get(userId) < COOLDOWN_SECONDS * 1000) {
+        return message.reply({ content: `⏳ Please wait ${COOLDOWN_SECONDS}s before asking again.`, allowedMentions: { repliedUser: false } });
+    }
+    cooldowns.set(userId, now);
 
-  // 20s cooldown
-  if (cooldowns.has(userId) && now - cooldowns.get(userId) < 20000) {
-    return message.reply({ content: '⏳ Please wait 20s before asking again.', allowedMentions: { repliedUser: false } });
-  }
-  cooldowns.set(userId, now);
+    const question = message.content
+        .replace(`<@${client.user.id}>`, '')
+        .replace(`<@!${client.user.id}>`, '')
+        .trim();
 
-  const question = message.content
-    .replace(`<@${client.user.id}>`, '')
-    .replace(`<@!${client.user.id}>`, '')
-    .trim();
+    if (!question) return message.reply({ content: 'Please ask a question when pinging me.', allowedMentions: { repliedUser: false } });
 
-  if (!question) {
-    return message.reply({ content: "Please include a question when pinging me.", allowedMentions: { repliedUser: false } });
-  }
+    await message.channel.sendTyping();
 
-  await message.channel.sendTyping();
+    try {
+        const response = await axios.post(
+            'https://api-inference.huggingface.co/models/google/functiongemma-270m-it',
+            { inputs: question },
+            { headers: { Authorization: `Bearer ${process.env.HF_API_KEY}` }, timeout: 25000 }
+        );
 
-  try {
-    const response = await axios.post(
-      'https://api-inference.huggingface.co/models/bigscience/bloom-560m',
-      { inputs: question },
-      { headers: { Authorization: `Bearer ${process.env.HF_API_KEY}` }, timeout: 25000 }
-    );
-
-    const answerText = response.data[0]?.generated_text || "No response generated.";
-
-    const embed = new EmbedBuilder()
-      .setColor(0x2b2d31)
-      .setDescription(answerText)
-      .setFooter({
-        text: "📰 WarScope AI | Based on open-source reporting & OSINT. Information may evolve as events."
-      })
-      .setTimestamp();
-
-    await message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
-  } catch (error) {
-    console.error("Hugging Face API error:", error.message);
-    await message.reply({ content: "⚠️ Unable to retrieve verified information at this time.", allowedMentions: { repliedUser: false } });
-  }
+        const answer = response.data[0]?.generated_text || 'No answer found.';
+        await message.reply({
+            content: `${answer}\n📰 WarScope AI | Based on open-source reporting & OSINT. Information may evolve as events develop.`,
+            allowedMentions: { repliedUser: false }
+        });
+    } catch (err) {
+        console.error(err);
+        await message.reply({ content: '⚠️ Unable to retrieve information at this time.', allowedMentions: { repliedUser: false } });
+    }
 });
 
-// =======================
-// 9️⃣ LOGIN
-// =======================
+// ------------------
+// LOGIN
+// ------------------
 client.login(process.env.BOT_TOKEN);
