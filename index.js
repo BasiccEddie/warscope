@@ -181,7 +181,7 @@ client.on('interactionCreate', async interaction => {
 });
 
 // =======================
-// 8️⃣ MESSAGE PING AI (Hugging Face GPT-Neo 125M)
+// 8️⃣ MESSAGE PING AI (Hugging Face BLOOM-560M)
 // =======================
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
@@ -190,7 +190,7 @@ client.on('messageCreate', async (message) => {
   const now = Date.now();
   const userId = message.author.id;
 
-  // Cooldown 20s per user
+  // 20s cooldown
   if (cooldowns.has(userId) && now - cooldowns.get(userId) < 20000) {
     return message.reply({ content: '⏳ Please wait 20s before asking again.', allowedMentions: { repliedUser: false } });
   }
@@ -209,9 +209,9 @@ client.on('messageCreate', async (message) => {
 
   try {
     const response = await axios.post(
-      'https://api-inference.huggingface.co/models/EleutherAI/gpt-neo-125M',
+      'https://api-inference.huggingface.co/models/bigscience/bloom-560m',
       { inputs: question },
-      { headers: { Authorization: `Bearer ${process.env.HF_API_KEY}` }, timeout: 20000 }
+      { headers: { Authorization: `Bearer ${process.env.HF_API_KEY}` }, timeout: 25000 }
     );
 
     const answerText = response.data[0]?.generated_text || "No response generated.";
@@ -225,7 +225,6 @@ client.on('messageCreate', async (message) => {
       .setTimestamp();
 
     await message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
-
   } catch (error) {
     console.error("Hugging Face API error:", error.message);
     await message.reply({ content: "⚠️ Unable to retrieve verified information at this time.", allowedMentions: { repliedUser: false } });
